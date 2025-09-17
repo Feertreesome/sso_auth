@@ -1,17 +1,6 @@
 import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
-import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "Clerk SSO authentication demo",
@@ -27,14 +16,28 @@ export default function RootLayout({
   const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
   if (!publishableKey) {
-    throw new Error(
-      "Missing NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY. Ensure it is defined in your environment."
+    return (
+      <html lang="en">
+        <body className="antialiased">
+          <main className="flex min-h-screen items-center justify-center bg-slate-950 p-6 text-center text-slate-200">
+            <div className="max-w-md space-y-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-8 shadow-lg">
+              <h1 className="text-lg font-semibold text-white">
+                Нужен NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+              </h1>
+              <p className="text-sm text-slate-300">
+                Добавьте publishable key Clerk в <code>.env.local</code>, затем перезапустите
+                приложение. Без него авторизация не будет работать.
+              </p>
+            </div>
+          </main>
+        </body>
+      </html>
     );
   }
 
   return (
     <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+      <body className="antialiased">
         <ClerkProvider
           publishableKey={publishableKey}
           afterSignInUrl="/"

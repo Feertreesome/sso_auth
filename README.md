@@ -36,7 +36,7 @@ cp .env.local.example .env.local
 
 Starts the Next.js development server on [http://localhost:3000](http://localhost:3000).
 
-### `npm run server`
+### `npm run server` / `node server`
 
 Boots the Express server from `server/index.mjs`. The server loads the `.env.local` file (via `dotenv`) and exposes two endpoints:
 
