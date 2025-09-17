@@ -28,7 +28,7 @@ cp .env.local.example .env.local
 | `CLERK_PUBLISHABLE_KEY` | Optional – only required if you reuse the publishable key on the backend. |
 | `NEXT_PUBLIC_API_BASE_URL` | Base URL of the Node.js server (used by the browser to send login requests). Default: `http://localhost:4000`. |
 | `CLIENT_ORIGIN` | Origin allowed to call the Node.js server. Default: `http://localhost:3000`. |
-| `CLERK_API_URL` | Override Clerk's REST API endpoint. Defaults to `https://api.clerk.com/v1`. |
+| `CLERK_API_URL` | Override Clerk's REST API endpoint. Pass the base domain (for example `https://api.clerk.com` or `https://api.eu.clerk.com`). The server trims any trailing `/v1`. |
 
 ## Available scripts
 
@@ -41,7 +41,7 @@ Starts the Next.js development server on [http://localhost:3000](http://localhos
 Boots the Express server from `server/index.mjs`. The server loads the `.env.local` file (via `dotenv`) and exposes two endpoints:
 
 - `GET /health` – simple status check.
-- `POST /auth/login` – accepts `{ identifier, password }`, calls Clerk's REST API (`/sign_ins` and `/sessions/{id}/tokens`) and returns the response.
+- `POST /auth/login` – accepts `{ identifier, password }`, calls Clerk via `@clerk/backend` (`signIns.create` plus `sessions.createToken`) and returns the response.
 
 The Node.js server must be running for the password login form to succeed.
 

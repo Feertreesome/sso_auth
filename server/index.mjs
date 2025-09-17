@@ -1,6 +1,7 @@
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
+import { createClerkClient, isClerkAPIResponseError } from "@clerk/backend";
 
 const envPath = process.env.CLERK_ENV_FILE || ".env.local";
 dotenv.config({ path: envPath });
@@ -15,37 +16,23 @@ requiredEnv.forEach((key) => {
 
 const app = express();
 const port = Number.parseInt(process.env.PORT ?? "4000", 10);
-const apiBaseUrl = process.env.CLERK_API_URL || "https://api.clerk.com/v1";
 const clientOrigin = process.env.CLIENT_ORIGIN || "http://localhost:3000";
+
+const rawClerkApiUrl = process.env.CLERK_API_URL?.trim();
+const sanitizedClerkApiUrl = rawClerkApiUrl
+  ? rawClerkApiUrl.replace(/\/?v1\/?$/, "") || undefined
+  : undefined;
+
+const clerk = process.env.CLERK_SECRET_KEY
+  ? createClerkClient({
+      secretKey: process.env.CLERK_SECRET_KEY,
+      publishableKey: process.env.CLERK_PUBLISHABLE_KEY,
+      apiUrl: sanitizedClerkApiUrl,
+    })
+  : null;
 
 app.use(cors({ origin: clientOrigin, credentials: true }));
 app.use(express.json());
-
-const clerkFetch = async (path, init = {}) => {
-  if (!process.env.CLERK_SECRET_KEY) {
-    throw new Error("CLERK_SECRET_KEY is required to call Clerk APIs");
-  }
-
-  const response = await fetch(`${apiBaseUrl}${path}`, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${process.env.CLERK_SECRET_KEY}`,
-      "Content-Type": "application/json",
-      ...(init.headers || {}),
-    },
-  });
-
-  const data = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    const error = new Error("Clerk API request failed");
-    error.status = response.status;
-    error.data = data;
-    throw error;
-  }
-
-  return data;
-};
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
@@ -58,40 +45,47 @@ app.post("/auth/login", async (req, res) => {
     return res.status(400).json({ error: "Both identifier and password are required" });
   }
 
+  if (!clerk) {
+    return res
+      .status(500)
+      .json({ error: "CLERK_SECRET_KEY is required to call Clerk APIs" });
+  }
+
   try {
-    const signInAttempt = await clerkFetch("/sign_ins", {
-      method: "POST",
-      body: JSON.stringify({ identifier, password }),
+    const signInAttempt = await clerk.signIns.create({
+      identifier,
+      password,
     });
 
     if (signInAttempt.status !== "complete") {
       return res.status(401).json({
         error: "Additional verification is required to complete sign in",
         status: signInAttempt.status,
-        signInAttempt,
+        signInAttempt: signInAttempt.toJSON(),
       });
     }
 
-    const sessionId = signInAttempt.created_session_id || signInAttempt.session_id;
+    const sessionId = signInAttempt.createdSessionId || signInAttempt.sessionId;
 
     if (!sessionId) {
       return res.status(500).json({
         error: "Clerk did not return a session identifier",
-        signInAttempt,
+        signInAttempt: signInAttempt.toJSON(),
       });
     }
 
     let sessionToken;
     try {
-      const tokenResponse = await clerkFetch(`/sessions/${sessionId}/tokens`, { method: "POST" });
-      sessionToken = tokenResponse.jwt || tokenResponse.token || null;
+      const tokenResponse = await clerk.sessions.createToken(sessionId);
+      sessionToken = tokenResponse?.jwt || tokenResponse?.token || null;
     } catch (tokenError) {
       console.warn("Failed to create session token", tokenError);
     }
 
     let user;
     try {
-      user = await clerkFetch(`/users/${signInAttempt.user_id}`);
+      const clerkUser = await clerk.users.getUser(signInAttempt.userId);
+      user = clerkUser?.toJSON?.() ?? clerkUser;
     } catch (userError) {
       console.warn("Unable to load user profile", userError);
     }
@@ -99,16 +93,16 @@ app.post("/auth/login", async (req, res) => {
     return res.json({
       message: "Successfully signed in",
       sessionId,
-      userId: signInAttempt.user_id,
+      userId: signInAttempt.userId,
       sessionToken,
       user,
     });
   } catch (error) {
     console.error("Login failed", error);
-    if (error.data?.errors?.length) {
+    if (isClerkAPIResponseError(error)) {
       return res.status(error.status || 500).json({
-        error: error.data.errors[0].message,
-        details: error.data.errors,
+        error: error.errors?.[0]?.message || "Clerk API request failed",
+        details: error.errors,
       });
     }
 
