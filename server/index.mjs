@@ -28,7 +28,7 @@ const rawClerkApiUrl = process.env.CLERK_API_URL?.trim();
 const sanitizedClerkApiUrl = rawClerkApiUrl
   ? rawClerkApiUrl.replace(/\/?v1\/?$/, "") || undefined
   : undefined;
-const clerkApiBaseUrl = sanitizedClerkApiUrl || "https://api.clerk.com";
+const clerkApiBaseUrl = sanitizedClerkApiUrl || "https://api.clerk.com/v1";
 
 const clerk = process.env.CLERK_SECRET_KEY
   ? createClerkClient({
@@ -49,6 +49,7 @@ app.use(
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
+
 
 app.get("/auth/me", requireAuth(), async (req, res) => {
   const auth = getAuth(req);
@@ -72,8 +73,35 @@ app.get("/auth/me", requireAuth(), async (req, res) => {
   }
 });
 
+//Новый тестовый
+app.get("/login", async (req, res) => {
+  const {login, password} = req.body;
+  try {
+    clerk.idPOAuthAccessToken
+    console.log()
+    // clerk.signInTokens.createSignInToken
+    const user = await clerk.users.createUser({
+      emailAddress: login,
+      password: password,
+    })
+
+    console.log(user, 'user')
+    return res.json(user)
+  } catch (error) {
+    res.status(404).json(error)
+  }
+})
+
+//Кодекс наваял нихуя не работает а getUserList вообще достает 1 узера хотя их 2
 app.post("/auth/login", async (req, res) => {
   const { identifier, password } = req.body || {};
+
+  try {
+    const userList = await clerk.users.getUserList();
+    console.log(userList, 'userList');
+  } catch (error) {
+    console.log('User list no( :', error)
+  }
 
   if (typeof identifier !== "string" || typeof password !== "string") {
     return res.status(400).json({ error: "Both identifier and password are required" });

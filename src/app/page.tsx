@@ -1,5 +1,7 @@
 "use client";
 
+import SignInForm from "@/app/email";
+import { Metadata } from "next";
 import {
   FormEvent,
   useCallback,
@@ -9,12 +11,13 @@ import {
   useState,
 } from "react";
 import {
+  ClerkProvider,
   SignOutButton,
   UserButton,
   useAuth,
   useClerk,
   useSignIn,
-  useUser,
+  useUser, SignedOut, SignInButton, SignUpButton, SignedIn,
 } from "@clerk/nextjs";
 
 type LoginResponse = {
@@ -103,7 +106,15 @@ export default function Home() {
           },
           body: JSON.stringify({ identifier, password }),
         });
+        const response2 = await fetch(`${apiBaseUrl.replace(/\/$/, "")}/login`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ identifier, password }),
+        });
 
+        console.log(response2, 'response2');
         const body: LoginResponse = await response.json();
 
         if (!response.ok) {
@@ -433,6 +444,38 @@ export default function Home() {
               )}
             </div>
           </section>
+
+
+          <section className="space-y-6">
+            <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-8 shadow-lg">
+              <h2 className="text-xl font-semibold text-white">Login with redirect</h2>
+              <p className="mt-2 text-sm text-slate-400">
+                Используются компоненты самого Клерка при нажатии происходит редирект
+                на котором происходит регистрация или логин все это настраивается в кабинете
+              </p>
+          <ClerkProvider>
+            <html lang="en">
+            <body>
+            <header className="flex justify-end items-center p-4 gap-4 h-16">
+              <SignedOut>
+                <SignInButton />
+                <SignUpButton>
+                  <button className="bg-[#6c47ff] text-white rounded-full font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 cursor-pointer">
+                    Sign Up
+                  </button>
+                </SignUpButton>
+              </SignedOut>
+              <SignedIn>
+                <UserButton />
+              </SignedIn>
+            </header>
+            </body>
+            </html>
+          </ClerkProvider>
+              </div>
+            </section>
+
+          <SignInForm/>
         </main>
       </div>
     </div>
