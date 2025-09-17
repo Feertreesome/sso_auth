@@ -1,7 +1,13 @@
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
-import { createClerkClient } from "@clerk/backend";
+import {
+  clerkClient as defaultClerkClient,
+  clerkMiddleware,
+  createClerkClient,
+  getAuth,
+  requireAuth,
+} from "@clerk/express";
 
 const envPath = process.env.CLERK_ENV_FILE || ".env.local";
 dotenv.config({ path: envPath });
@@ -30,13 +36,40 @@ const clerk = process.env.CLERK_SECRET_KEY
       publishableKey: process.env.CLERK_PUBLISHABLE_KEY,
       apiUrl: sanitizedClerkApiUrl,
     })
-  : null;
+  : defaultClerkClient;
 
 app.use(cors({ origin: clientOrigin, credentials: true }));
 app.use(express.json());
+app.use(
+  clerkMiddleware({
+    clerkClient: clerk,
+  })
+);
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
+});
+
+app.get("/auth/me", requireAuth(), async (req, res) => {
+  const auth = getAuth(req);
+
+  if (!auth?.userId) {
+    return res.status(401).json({ error: "No active Clerk session found" });
+  }
+
+  try {
+    const user = await clerk.users.getUser(auth.userId);
+    return res.json({
+      user,
+      sessionId: auth.sessionId,
+      actor: auth.actor,
+    });
+  } catch (error) {
+    console.error("Failed to load authenticated user", error);
+    return res.status(500).json({
+      error: "Unable to load authenticated user",
+    });
+  }
 });
 
 app.post("/auth/login", async (req, res) => {
@@ -46,7 +79,7 @@ app.post("/auth/login", async (req, res) => {
     return res.status(400).json({ error: "Both identifier and password are required" });
   }
 
-  if (!clerk) {
+  if (!process.env.CLERK_SECRET_KEY) {
     return res
       .status(500)
       .json({ error: "CLERK_SECRET_KEY is required to call Clerk APIs" });

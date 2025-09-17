@@ -4,7 +4,7 @@ This project demonstrates how to combine [Clerk](https://clerk.com/) single sign
 
 The UI is built with Next.js (App Router) and offers two parallel entry points:
 
-- **Password form** – sends the identifier/password pair to the Node.js server (`server/index.mjs`). The server forwards the credentials to Clerk's REST API, creates a session and returns its metadata to the browser.
+- **Password form** – sends the identifier/password pair to the Node.js server (`server/index.mjs`). The server uses `@clerk/express` to talk to Clerk, forwards the credentials to Clerk's REST API, creates a session and returns its metadata to the browser.
 - **"Login with GitHub"** – triggers Clerk's OAuth GitHub flow via `authenticateWithRedirect`. Once the OAuth handshake finishes Clerk redirects back to `/sso-callback` where the session is activated.
 
 ## Prerequisites
@@ -38,10 +38,11 @@ Starts the Next.js development server on [http://localhost:3000](http://localhos
 
 ### `npm run server` / `node server`
 
-Boots the Express server from `server/index.mjs`. The server loads the `.env.local` file (via `dotenv`) and exposes two endpoints:
+Boots the Express server from `server/index.mjs`. The server loads the `.env.local` file (via `dotenv`) and exposes three endpoints:
 
 - `GET /health` – simple status check.
-- `POST /auth/login` – accepts `{ identifier, password }`, forwards the credentials to Clerk's REST API (`POST /v1/sign_ins`) and uses the backend SDK to fetch the session token and user profile before returning the response.
+- `GET /auth/me` – protected by `requireAuth()` from `@clerk/express`. Returns the authenticated user's profile if the request carries a valid Clerk session.
+- `POST /auth/login` – accepts `{ identifier, password }`, forwards the credentials to Clerk's REST API (`POST /v1/sign_ins`) and uses the Express SDK to fetch the session token and user profile before returning the response.
 
 The Node.js server must be running for the password login form to succeed.
 
