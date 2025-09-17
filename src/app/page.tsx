@@ -1,103 +1,274 @@
-import Image from "next/image";
+"use client";
+
+import { FormEvent, useCallback, useMemo, useState } from "react";
+import {
+  SignOutButton,
+  UserButton,
+  useClerk,
+  useSignIn,
+  useUser,
+} from "@clerk/nextjs";
+
+type LoginResponse = {
+  message?: string;
+  sessionId?: string;
+  sessionToken?: string | null;
+  userId?: string;
+  user?: {
+    id?: string;
+    email_addresses?: Array<{ email_address: string }>;
+    first_name?: string | null;
+    last_name?: string | null;
+    username?: string | null;
+  };
+  error?: string;
+  details?: unknown;
+  status?: string;
+};
+
+const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [identifier, setIdentifier] = useState("");
+  const [password, setPassword] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [apiResponse, setApiResponse] = useState<LoginResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+  const { setActive } = useClerk();
+  const { isSignedIn, user } = useUser();
+  const { signIn, isLoaded: isSignInLoaded } = useSignIn();
+
+  const primaryEmail = useMemo(() => {
+    if (!user?.primaryEmailAddress) {
+      return null;
+    }
+
+    return user.primaryEmailAddress.emailAddress;
+  }, [user?.primaryEmailAddress]);
+
+  const handleSubmit = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+
+      if (!apiBaseUrl) {
+        setError(
+          "NEXT_PUBLIC_API_BASE_URL is not set. Please define it so the UI knows where the Node server is running."
+        );
+        return;
+      }
+
+      setIsLoading(true);
+      setError(null);
+      setApiResponse(null);
+
+      try {
+        const response = await fetch(`${apiBaseUrl.replace(/\/$/, "")}/auth/login`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ identifier, password }),
+        });
+
+        const body: LoginResponse = await response.json();
+
+        if (!response.ok) {
+          setError(body.error || "Не удалось войти. Проверьте введенные данные.");
+          setApiResponse(body);
+          return;
+        }
+
+        setApiResponse(body);
+
+        if (body.sessionId) {
+          try {
+            await setActive({ session: body.sessionId });
+          } catch (activateError) {
+            console.warn("Unable to set active Clerk session", activateError);
+          }
+        }
+      } catch (networkError) {
+        console.error(networkError);
+        setError(
+          networkError instanceof Error
+            ? networkError.message
+            : "Unexpected network error"
+        );
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [identifier, password, setActive]
+  );
+
+  const handleGitHubLogin = useCallback(async () => {
+    if (!isSignInLoaded) {
+      setError("Clerk еще загружается. Повторите попытку через секунду.");
+      return;
+    }
+
+    setError(null);
+    setApiResponse(null);
+
+    try {
+      await signIn.authenticateWithRedirect({
+        strategy: "oauth_github",
+        redirectUrl: "/sso-callback",
+        redirectUrlComplete: "/",
+      });
+    } catch (oauthError) {
+      console.error(oauthError);
+      setError(
+        oauthError instanceof Error
+          ? oauthError.message
+          : "Не удалось запустить авторизацию через GitHub"
+      );
+    }
+  }, [isSignInLoaded, signIn]);
+
+  return (
+    <div className="min-h-screen bg-slate-950 py-16 text-slate-50">
+      <div className="mx-auto flex w-full max-w-4xl flex-col gap-10 px-6">
+        <header className="space-y-2">
+          <p className="text-sm uppercase tracking-[0.2em] text-slate-400">
+            Clerk + Node.js
+          </p>
+          <h1 className="text-3xl font-semibold sm:text-4xl">
+            Единая авторизация: пароль или GitHub SSO
+          </h1>
+          <p className="text-base text-slate-300">
+            Форма ниже отправляет логин и пароль на наш Node.js сервер. Сервер
+            обращается к Clerk API, создает сессию и возвращает результат.
+            Справа — авторизация напрямую через Clerk и GitHub SSO.
+          </p>
+        </header>
+
+        <main className="grid gap-12 md:grid-cols-2">
+          <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-8 shadow-lg">
+            <h2 className="text-xl font-semibold text-white">
+              Вход по логину и паролю
+            </h2>
+            <p className="mt-2 text-sm text-slate-400">
+              Данные отправляются на <code className="rounded bg-slate-800 px-2 py-0.5">/auth/login</code>
+              нашего Node сервера. На стороне сервера вызывается Clerk REST API
+              для проверки учетных данных.
+            </p>
+
+            <form className="mt-6 space-y-5" onSubmit={handleSubmit}>
+              <label className="block text-sm font-medium text-slate-200">
+                Email или username
+                <input
+                  value={identifier}
+                  onChange={(event) => setIdentifier(event.target.value)}
+                  className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-base text-white outline-none transition focus:border-purple-400 focus:ring-2 focus:ring-purple-500/40"
+                  placeholder="you@example.com"
+                  autoComplete="username"
+                  required
+                  disabled={isLoading}
+                />
+              </label>
+
+              <label className="block text-sm font-medium text-slate-200">
+                Пароль
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-base text-white outline-none transition focus:border-purple-400 focus:ring-2 focus:ring-purple-500/40"
+                  placeholder="Пароль"
+                  autoComplete="current-password"
+                  required
+                  disabled={isLoading}
+                />
+              </label>
+
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full rounded-lg bg-purple-500 px-4 py-3 text-base font-semibold text-white transition hover:bg-purple-400 focus:ring-2 focus:ring-purple-300 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isLoading ? "Отправляем..." : "Войти через Node сервер"}
+              </button>
+            </form>
+
+            {error && (
+              <p className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
+                {error}
+              </p>
+            )}
+
+            {apiResponse && (
+              <div className="mt-6 space-y-3">
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-400">
+                  Ответ сервера
+                </h3>
+                <pre className="overflow-x-auto rounded-lg border border-slate-800 bg-slate-950 p-4 text-xs text-slate-300">
+{JSON.stringify(apiResponse, null, 2)}
+                </pre>
+              </div>
+            )}
+          </section>
+
+          <section className="space-y-6">
+            <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-8 shadow-lg">
+              <h2 className="text-xl font-semibold text-white">GitHub SSO</h2>
+              <p className="mt-2 text-sm text-slate-400">
+                Кнопка запускает <span className="font-mono">authenticateWithRedirect</span> для
+                стратегии <span className="font-mono">oauth_github</span>. По завершении OAuth
+                Clerk вернется на <span className="font-mono">/sso-callback</span> и активирует
+                сессию.
+              </p>
+
+              <button
+                type="button"
+                onClick={handleGitHubLogin}
+                className="mt-6 inline-flex w-full items-center justify-center gap-3 rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 text-base font-semibold text-white transition hover:border-purple-400 hover:text-purple-200 focus:ring-2 focus:ring-purple-500/40"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                  className="h-5 w-5 fill-current"
+                >
+                  <path d="M12 .5C5.65.5.5 5.65.5 12c0 5.09 3.29 9.4 7.86 10.94.58.11.79-.25.79-.56 0-.28-.01-1.02-.02-2-3.2.7-3.88-1.54-3.88-1.54-.53-1.36-1.28-1.72-1.28-1.72-1.05-.72.08-.71.08-.71 1.16.08 1.77 1.19 1.77 1.19 1.04 1.78 2.74 1.27 3.41.97.11-.76.41-1.27.74-1.56-2.55-.29-5.23-1.28-5.23-5.68 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.47.11-3.07 0 0 .97-.31 3.18 1.18a10.95 10.95 0 0 1 5.8 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.6.23 2.78.11 3.07.74.81 1.19 1.84 1.19 3.1 0 4.41-2.69 5.39-5.25 5.67.42.36.8 1.06.8 2.14 0 1.55-.02 2.8-.02 3.18 0 .31.21.68.8.56A10.52 10.52 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z" />
+                </svg>
+                Войти через GitHub
+              </button>
+
+              <p className="mt-4 text-xs text-slate-500">
+                Убедитесь, что провайдер GitHub включен в настройках Clerk, иначе кнопка не будет отображаться пользователю.
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-8 shadow-lg">
+              <h2 className="text-xl font-semibold text-white">Текущий пользователь</h2>
+              {isSignedIn && user ? (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between gap-4 rounded-lg border border-slate-800 bg-slate-950 px-4 py-3">
+                    <div>
+                      <p className="text-base font-semibold text-white">{user.fullName || "Без имени"}</p>
+                      {primaryEmail && (
+                        <p className="text-sm text-slate-400">{primaryEmail}</p>
+                      )}
+                    </div>
+                    <UserButton afterSignOutUrl="/" />
+                  </div>
+                  <SignOutButton>
+                    <button className="w-full rounded-lg border border-red-500/40 px-4 py-2 text-sm font-semibold text-red-200 transition hover:bg-red-500/10">
+                      Выйти
+                    </button>
+                  </SignOutButton>
+                </div>
+              ) : (
+                <p className="text-sm text-slate-400">
+                  Пользователь не авторизован. После успешного входа статус обновится автоматически.
+                </p>
+              )}
+            </div>
+          </section>
+        </main>
+      </div>
     </div>
   );
 }
