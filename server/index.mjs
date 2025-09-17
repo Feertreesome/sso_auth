@@ -1,7 +1,7 @@
 import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
-import { createClerkClient, isClerkAPIResponseError } from "@clerk/backend";
+import { createClerkClient } from "@clerk/backend";
 
 const envPath = process.env.CLERK_ENV_FILE || ".env.local";
 dotenv.config({ path: envPath });
@@ -22,6 +22,7 @@ const rawClerkApiUrl = process.env.CLERK_API_URL?.trim();
 const sanitizedClerkApiUrl = rawClerkApiUrl
   ? rawClerkApiUrl.replace(/\/?v1\/?$/, "") || undefined
   : undefined;
+const clerkApiBaseUrl = sanitizedClerkApiUrl || "https://api.clerk.com";
 
 const clerk = process.env.CLERK_SECRET_KEY
   ? createClerkClient({
@@ -51,63 +52,89 @@ app.post("/auth/login", async (req, res) => {
       .json({ error: "CLERK_SECRET_KEY is required to call Clerk APIs" });
   }
 
+  const secretKey = process.env.CLERK_SECRET_KEY;
+
   try {
-    const signInAttempt = await clerk.signIns.create({
-      identifier,
-      password,
+    const signInEndpoint = new URL("/v1/sign_ins", clerkApiBaseUrl).toString();
+    const response = await fetch(signInEndpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${secretKey}`,
+      },
+      body: JSON.stringify({ identifier, password }),
     });
 
-    if (signInAttempt.status !== "complete") {
-      return res.status(401).json({
-        error: "Additional verification is required to complete sign in",
-        status: signInAttempt.status,
-        signInAttempt: signInAttempt.toJSON(),
+    let payload;
+    try {
+      payload = await response.json();
+    } catch (parseError) {
+      console.error("Unable to parse Clerk sign-in response", parseError);
+    }
+
+    if (!response.ok || !payload) {
+      const errorMessage =
+        payload?.errors?.[0]?.message ||
+        payload?.message ||
+        response.statusText ||
+        "Clerk API request failed";
+
+      return res.status(response.status || 500).json({
+        error: errorMessage,
+        details: payload?.errors ?? payload ?? null,
       });
     }
 
-    const sessionId = signInAttempt.createdSessionId || signInAttempt.sessionId;
+    if (payload.status !== "complete") {
+      return res.status(401).json({
+        error: "Additional verification is required to complete sign in",
+        status: payload.status,
+        details: payload,
+      });
+    }
+
+    const sessionId = payload.created_session_id || payload.session_id;
 
     if (!sessionId) {
       return res.status(500).json({
         error: "Clerk did not return a session identifier",
-        signInAttempt: signInAttempt.toJSON(),
+        details: payload,
       });
     }
 
-    let sessionToken;
-    try {
-      const tokenResponse = await clerk.sessions.createToken(sessionId);
-      sessionToken = tokenResponse?.jwt || tokenResponse?.token || null;
-    } catch (tokenError) {
-      console.warn("Failed to create session token", tokenError);
+    let sessionToken = payload.created_session_jwt || null;
+    if (!sessionToken) {
+      try {
+        const tokenResponse = await clerk.sessions.getToken(sessionId);
+        sessionToken = tokenResponse?.jwt || null;
+      } catch (tokenError) {
+        console.warn("Failed to fetch session token", tokenError);
+      }
     }
 
     let user;
-    try {
-      const clerkUser = await clerk.users.getUser(signInAttempt.userId);
-      user = clerkUser?.toJSON?.() ?? clerkUser;
-    } catch (userError) {
-      console.warn("Unable to load user profile", userError);
+    const userId = payload.user_id;
+    if (userId) {
+      try {
+        const clerkUser = await clerk.users.getUser(userId);
+        user = clerkUser?.toJSON?.() ?? clerkUser;
+      } catch (userError) {
+        console.warn("Unable to load user profile", userError);
+      }
     }
 
     return res.json({
       message: "Successfully signed in",
+      status: payload.status,
       sessionId,
-      userId: signInAttempt.userId,
+      userId,
       sessionToken,
       user,
     });
   } catch (error) {
     console.error("Login failed", error);
-    if (isClerkAPIResponseError(error)) {
-      return res.status(error.status || 500).json({
-        error: error.errors?.[0]?.message || "Clerk API request failed",
-        details: error.errors,
-      });
-    }
-
-    return res.status(error.status || 500).json({
-      error: error.message || "Failed to sign in",
+    return res.status(500).json({
+      error: error instanceof Error ? error.message : "Failed to sign in",
     });
   }
 });

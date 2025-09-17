@@ -41,7 +41,7 @@ Starts the Next.js development server on [http://localhost:3000](http://localhos
 Boots the Express server from `server/index.mjs`. The server loads the `.env.local` file (via `dotenv`) and exposes two endpoints:
 
 - `GET /health` – simple status check.
-- `POST /auth/login` – accepts `{ identifier, password }`, calls Clerk via `@clerk/backend` (`signIns.create` plus `sessions.createToken`) and returns the response.
+- `POST /auth/login` – accepts `{ identifier, password }`, forwards the credentials to Clerk's REST API (`POST /v1/sign_ins`) and uses the backend SDK to fetch the session token and user profile before returning the response.
 
 The Node.js server must be running for the password login form to succeed.
 
