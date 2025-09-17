@@ -18,7 +18,7 @@ export default function RootLayout({
   if (!publishableKey) {
     return (
       <html lang="en">
-        <body className="antialiased">
+        <body className="antialiased" suppressHydrationWarning>
           <main className="flex min-h-screen items-center justify-center bg-slate-950 p-6 text-center text-slate-200">
             <div className="max-w-md space-y-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-8 shadow-lg">
               <h1 className="text-lg font-semibold text-white">
@@ -37,7 +37,7 @@ export default function RootLayout({
 
   return (
     <html lang="en">
-      <body className="antialiased">
+      <body className="antialiased" suppressHydrationWarning>
         <ClerkProvider
           publishableKey={publishableKey}
           afterSignInUrl="/"
