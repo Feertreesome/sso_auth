@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import { useSignIn } from '@clerk/nextjs'
+import { Clerk } from '@clerk/clerk-js'
 import { useRouter } from 'next/navigation'
 
 export default function SignInForm() {
@@ -15,6 +16,12 @@ export default function SignInForm() {
         e.preventDefault()
 
         if (!isLoaded) return
+
+        const clerk = new Clerk('publishableKey')
+        clerk.client?.signIn.create({
+            identifier: email,
+            password,
+        })
 
         // Start the sign-in process using the email and password provided
         try {

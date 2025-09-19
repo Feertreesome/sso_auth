@@ -11,12 +11,17 @@
   },
   "dependencies": {
     "@clerk/backend": "^2.14.0",
+    "@clerk/clerk-js": "^5.93.0",
     "@clerk/express": "^1.7.31",
     "@clerk/nextjs": "^6.32.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.2",
     "express": "^5.1.0",
+    "express-handlebars": "^8.0.1",
+    "express-openid-connect": "^2.19.2",
     "next": "15.5.3",
+    "next-auth": "^4.24.11",
+    "passport": "^0.7.0",
     "react": "19.1.0",
     "react-dom": "19.1.0"
   },

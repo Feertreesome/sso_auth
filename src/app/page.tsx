@@ -1,7 +1,6 @@
 "use client";
 
 import SignInForm from "@/app/email";
-import { Metadata } from "next";
 import {
   FormEvent,
   useCallback,
@@ -64,6 +63,7 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [apiResponse, setApiResponse] = useState<LoginResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [jwt, setJwt] = useState<string | null>(null);
   const [verificationResponse, setVerificationResponse] =
     useState<SessionVerificationResponse | null>(null);
   const [verificationError, setVerificationError] = useState<string | null>(null);
@@ -87,6 +87,11 @@ export default function Home() {
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
 
+      if (!isSignInLoaded) {
+        setError("Clerk еще загружается. Повторите попытку через секунду.");
+        return;
+      }
+
       if (!apiBaseUrl) {
         setError(
           "NEXT_PUBLIC_API_BASE_URL is not set. Please define it so the UI knows where the Node server is running."
@@ -99,38 +104,54 @@ export default function Home() {
       setApiResponse(null);
 
       try {
-        const response = await fetch(`${apiBaseUrl.replace(/\/$/, "")}/auth/login`, {
+        // const response = await fetch(`${apiBaseUrl.replace(/\/$/, "")}/auth/login`, {
+        //   method: "POST",
+        //   headers: {
+        //     "Content-Type": "application/json",
+        //   },
+        //   body: JSON.stringify({ identifier, password }),
+        // });
+
+        // 1) просим бэкенд проверить пароль и выдать ticket
+        const r1 = await fetch(`${apiBaseUrl.replace(/\/$/, "")}/auth/login`, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ identifier, password }),
         });
-        const response2 = await fetch(`${apiBaseUrl.replace(/\/$/, "")}/login`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ identifier, password }),
-        });
-
-        console.log(response2, 'response2');
-        const body: LoginResponse = await response.json();
-
-        if (!response.ok) {
-          setError(body.error || "Не удалось войти. Проверьте введенные данные.");
-          setApiResponse(body);
+        const body: { ticket?: string; error?: string } = await r1.json();
+        if (!r1.ok || !body.ticket) {
+          setError(body.error || "Не удалось войти. Проверьте данные.");
+          setApiResponse(body as any);
           return;
         }
 
-        setApiResponse(body);
+        // console.log(response, 'response');
+        // const body: LoginResponse = await response.json();
 
-        if (body.sessionId) {
-          try {
-            await setActive({ session: body.sessionId });
-          } catch (activateError) {
-            console.warn("Unable to set active Clerk session", activateError);
-          }
+        // 2) поглощаем ticket через SDK (создаст сессию в браузере)
+        const s = await signIn.create({ strategy: "ticket", ticket: body.ticket });
+
+        // if (!response.ok) {
+        //   setError(body.error || "Не удалось войти. Проверьте введенные данные.");
+        //   setApiResponse(body);
+        //   return;
+        // }
+        //
+        // setApiResponse(body);
+        //
+        // if (body.sessionId) {
+        //   try {
+        //     await setActive({ session: body.sessionId });
+        //   } catch (activateError) {
+        //     console.warn("Unable to set active Clerk session", activateError);
+        //   }
+        // }
+        // 3) делаем сессию активной
+        if (s?.createdSessionId) {
+          await setActive({ session: s.createdSessionId });
+          setApiResponse({ message: "Signed in", sessionId: s.createdSessionId } as any);
+        } else {
+          setError("Не удалось создать сессию");
         }
       } catch (networkError) {
         console.error(networkError);
@@ -145,6 +166,28 @@ export default function Home() {
     },
     [identifier, password, setActive]
   );
+
+  const getApiJwt = useCallback(async () => {
+    if (!isSignedIn) throw new Error("Not signed in");
+
+    let sessionToken = await getToken();
+
+    let res = await fetch(`${apiBaseUrl.replace(/\/$/, "")}/auth/jwt`, {
+      headers: { Authorization: `Bearer ${sessionToken}` },
+    });
+
+    if (res.status === 401) {
+      sessionToken = await getToken({ skipCache: true });
+      res = await fetch(`${apiBaseUrl.replace(/\/$/, "")}/auth/jwt`, {
+        headers: { Authorization: `Bearer ${sessionToken}` },
+      });
+    }
+
+    if (!res.ok) throw new Error(`JWT failed (${res.status})`);
+    const { access_token } = await res.json();
+    console.log(access_token, 'access_token');
+    setJwt(access_token);
+  }, [apiBaseUrl, getToken, isSignedIn]);
 
   const verifySessionWithServer = useCallback(async () => {
     if (!sessionId) {
@@ -215,6 +258,20 @@ export default function Home() {
       setIsVerifying(false);
     }
   }, [getToken, sessionId]);
+
+  const sessionSub = useCallback(async () => {
+    const response = await fetch(
+        `${apiBaseUrl.replace(/\/$/, "")}/login`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+    );
+
+    console.log(response, 'response sessionSub')
+  }, []);
 
   const handleGitHubLogin = useCallback(async () => {
     if (!isSignInLoaded) {
@@ -373,49 +430,49 @@ export default function Home() {
                 Убедитесь, что провайдер GitHub включен в настройках Clerk, иначе кнопка не будет отображаться пользователю.
               </p>
 
-              <div className="mt-6 space-y-4 rounded-2xl border border-slate-800/60 bg-slate-950/40 p-4">
-                <div className="flex items-center justify-between gap-4">
-                  <h3 className="text-sm font-semibold text-slate-200">
-                    Проверка токена на Node сервере
-                  </h3>
-                  {isVerifying && (
-                    <span className="text-xs text-slate-400">Проверяем...</span>
-                  )}
-                </div>
-                <p className="text-xs text-slate-400">
-                  После успешного GitHub входа мы автоматически запрашиваем JWT сессии через Clerk и отправляем его на
-                  <code className="mx-1 rounded bg-slate-800 px-1.5 py-0.5">/auth/verify-session</code>
-                  Node сервера. Ниже можно повторить проверку вручную.
-                </p>
-                <button
-                  type="button"
-                  onClick={verifySessionWithServer}
-                  disabled={!isSignedIn || isVerifying}
-                  className="inline-flex w-full items-center justify-center rounded-lg border border-slate-700 bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:border-purple-400 hover:text-purple-200 focus:ring-2 focus:ring-purple-500/40 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {isVerifying
-                    ? "Проверяем токен..."
-                    : "Проверить текущую сессию на Node сервере"}
-                </button>
-                {!isSignedIn && (
-                  <p className="text-xs text-slate-500">
-                    Пройдите авторизацию через GitHub, чтобы появилось что проверять.
-                  </p>
-                )}
-                {verificationError && (
-                  <p className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">
-                    {verificationError}
-                  </p>
-                )}
-                {verificationResponse && (
-                  <div className="space-y-2">
-                    <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                      Ответ проверки
-                    </h4>
-                    <pre className="max-h-64 overflow-auto rounded-lg border border-slate-800 bg-slate-950 p-3 text-[11px] leading-relaxed text-slate-300">{JSON.stringify(verificationResponse, null, 2)}</pre>
-                  </div>
-                )}
-              </div>
+              {/*<div className="mt-6 space-y-4 rounded-2xl border border-slate-800/60 bg-slate-950/40 p-4">*/}
+              {/*  <div className="flex items-center justify-between gap-4">*/}
+              {/*    <h3 className="text-sm font-semibold text-slate-200">*/}
+              {/*      Проверка токена на Node сервере*/}
+              {/*    </h3>*/}
+              {/*    {isVerifying && (*/}
+              {/*      <span className="text-xs text-slate-400">Проверяем...</span>*/}
+              {/*    )}*/}
+              {/*  </div>*/}
+              {/*  <p className="text-xs text-slate-400">*/}
+              {/*    После успешного GitHub входа мы автоматически запрашиваем JWT сессии через Clerk и отправляем его на*/}
+              {/*    <code className="mx-1 rounded bg-slate-800 px-1.5 py-0.5">/auth/verify-session</code>*/}
+              {/*    Node сервера. Ниже можно повторить проверку вручную.*/}
+              {/*  </p>*/}
+              {/*  <button*/}
+              {/*    type="button"*/}
+              {/*    onClick={verifySessionWithServer}*/}
+              {/*    disabled={!isSignedIn || isVerifying}*/}
+              {/*    className="inline-flex w-full items-center justify-center rounded-lg border border-slate-700 bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:border-purple-400 hover:text-purple-200 focus:ring-2 focus:ring-purple-500/40 disabled:cursor-not-allowed disabled:opacity-60"*/}
+              {/*  >*/}
+              {/*    {isVerifying*/}
+              {/*      ? "Проверяем токен..."*/}
+              {/*      : "Проверить текущую сессию на Node сервере"}*/}
+              {/*  </button>*/}
+              {/*  {!isSignedIn && (*/}
+              {/*    <p className="text-xs text-slate-500">*/}
+              {/*      Пройдите авторизацию через GitHub, чтобы появилось что проверять.*/}
+              {/*    </p>*/}
+              {/*  )}*/}
+              {/*  {verificationError && (*/}
+              {/*    <p className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">*/}
+              {/*      {verificationError}*/}
+              {/*    </p>*/}
+              {/*  )}*/}
+              {/*  {verificationResponse && (*/}
+              {/*    <div className="space-y-2">*/}
+              {/*      <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-400">*/}
+              {/*        Ответ проверки*/}
+              {/*      </h4>*/}
+              {/*      <pre className="max-h-64 overflow-auto rounded-lg border border-slate-800 bg-slate-950 p-3 text-[11px] leading-relaxed text-slate-300">{JSON.stringify(verificationResponse, null, 2)}</pre>*/}
+              {/*    </div>*/}
+              {/*  )}*/}
+              {/*</div>*/}
             </div>
 
             <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-8 shadow-lg">
@@ -473,6 +530,7 @@ export default function Home() {
             </html>
           </ClerkProvider>
               </div>
+            <button onClick={getApiJwt}> get Api Jwt</button>
             </section>
 
           <SignInForm/>
