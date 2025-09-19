@@ -1,7 +1,7 @@
 "use client";
 
 import SignInForm from "@/app/email";
-import { Metadata } from "next";
+import NextAuthLogin from "@/app/components/next-auth-login";
 import {
   FormEvent,
   useCallback,
@@ -475,6 +475,7 @@ export default function Home() {
               </div>
             </section>
 
+          <NextAuthLogin />
           <SignInForm/>
         </main>
       </div>

@@ -77,8 +77,8 @@ app.get("/auth/me", requireAuth(), async (req, res) => {
 app.get("/login", async (req, res) => {
   const {login, password} = req.body;
   try {
-    clerk.idPOAuthAccessToken
-    console.log()
+    // Временный код для отладки OAuth — оставляем закомментированным, чтобы линтер был доволен
+    // clerk.idPOAuthAccessToken;
     // clerk.signInTokens.createSignInToken
     const user = await clerk.users.createUser({
       emailAddress: login,
