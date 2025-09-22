@@ -1,4 +1,5 @@
 import type { NextAuthOptions } from "next-auth";
+import jwt from "jsonwebtoken"
 import GitHubProvider from "next-auth/providers/github";
 import CredentialsProvider from "next-auth/providers/credentials";
 
@@ -38,6 +39,8 @@ async function authorizeWithCredentials(credentials?: Record<string, unknown>) {
     throw new Error("Не переданы учетные данные");
   }
 
+  const user = { id: "1", name: "ebash.v2.1@gmail", email: "jsmith@example.com" };
+
   const identifier = credentials.identifier;
   const password = credentials.password;
 
@@ -51,43 +54,34 @@ async function authorizeWithCredentials(credentials?: Record<string, unknown>) {
     );
   }
 
-  const endpoint = `${apiBaseUrl.replace(/\/$/, "")}/auth/login`;
+  // const endpoint = `${apiBaseUrl.replace(/\/$/, "")}/auth/login`;
+  //
+  // const response = await fetch(endpoint, {
+  //   method: "POST",
+  //   headers: {
+  //     "Content-Type": "application/json",
+  //   },
+  //   body: JSON.stringify({ identifier, password }),
+  // });
 
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ identifier, password }),
-  });
+  // let data: LoginResponse | null = null;
+  //
+  // try {
+  //   data = (await response.json()) as LoginResponse;
+  // } catch {
+  //   data = null;
+  // }
+  //
+  // if (!response.ok || !data) {
+  //   const errorMessage = data?.error ?? "Не удалось подтвердить учетные данные";
+  //   throw new Error(errorMessage);
+  // }
+  //
+  // if (!data.sessionId) {
+  //   throw new Error("Сервер не вернул sessionId Clerk");
+  // }
 
-  let data: LoginResponse | null = null;
-
-  try {
-    data = (await response.json()) as LoginResponse;
-  } catch {
-    data = null;
-  }
-
-  if (!response.ok || !data) {
-    const errorMessage = data?.error ?? "Не удалось подтвердить учетные данные";
-    throw new Error(errorMessage);
-  }
-
-  if (!data.sessionId) {
-    throw new Error("Сервер не вернул sessionId Clerk");
-  }
-
-  return {
-    id: data.user?.id ?? data.sessionId,
-    email:
-      data.user?.email_addresses?.[0]?.email_address ??
-      (identifier.includes("@") ? identifier : null),
-    name: buildFullName(data),
-    sessionId: data.sessionId,
-    sessionToken: data.sessionToken,
-    clerkUserId: data.user?.id,
-  };
+  return user;
 }
 
 export const nextAuthOptions: NextAuthOptions = {
@@ -96,8 +90,8 @@ export const nextAuthOptions: NextAuthOptions = {
   },
   providers: [
     GitHubProvider({
-      clientId: process.env.GITHUB_CLIENT_ID ?? "",
-      clientSecret: process.env.GITHUB_CLIENT_SECRET ?? "",
+      clientId: process.env.GITHUB_CLIENT_ID ?? "Ov23li60WGCXdAYHLdDW",
+      clientSecret: process.env.GITHUB_CLIENT_SECRET ?? "0a5bcb1f0611afb193ed6cf5f79b15b05dad1ffc",
       allowDangerousEmailAccountLinking: true,
     }),
     CredentialsProvider({
@@ -114,44 +108,36 @@ export const nextAuthOptions: NextAuthOptions = {
       authorize: authorizeWithCredentials,
     }),
   ],
+  jwt: {
+    //Кастомно делаем токены,
+    // можно к примеру попробовать гинерить его на беке и тулить сюда но скорре всего это говно
+    //https://next-auth.js.org/configuration/nextjs#custom-jwt-decode-method
+    async encode({ secret, token }) {
+      const JWT = jwt.sign(token, secret)
+      console.log(JWT, 'My custom jwt');
+      return JWT;
+    },
+    async decode({ secret, token }) {
+      const JWT = jwt.verify(token, secret)
+      console.log(JWT, 'decode JWT');
+      return JWT;
+    },
+  },
   callbacks: {
     async jwt({ token, user, account }) {
-      if (account?.provider === "github" && user) {
-        token.githubProfile = {
-          id: account.providerAccountId,
-        };
+      // Можем впихивать все что нам нужно в токен
+      console.log(token, '======= token =======')
+      if (user) {
+        token.sub = user.id;
+        token.role = (user as any).role;
       }
-
-      if (user && "sessionId" in user) {
-        token.sessionId = (user as Record<string, unknown>).sessionId;
-        token.sessionToken = (user as Record<string, unknown>).sessionToken;
-        token.clerkUserId = (user as Record<string, unknown>).clerkUserId;
-      }
-
       return token;
     },
     async session({ session, token }) {
-      if (session.user) {
-        session.user = {
-          ...session.user,
-          clerkUserId: token.clerkUserId as string | undefined,
-          clerkSessionId: token.sessionId as string | undefined,
-        } as typeof session.user & {
-          clerkUserId?: string;
-          clerkSessionId?: string;
-        };
-      }
-
-      if (token.sessionToken) {
-        (session as typeof session & { clerkSessionToken?: string }).clerkSessionToken =
-          token.sessionToken as string | undefined;
-      }
-
-      if (token.githubProfile) {
-        (session as typeof session & { githubProfile?: unknown }).githubProfile =
-          token.githubProfile;
-      }
-
+      //Аутентифицированная сессия и ее токен
+      console.log(token, 'token in session');
+      (session.user as any).id = token.sub;
+      (session as any).role = token.role;
       return session;
     },
   },

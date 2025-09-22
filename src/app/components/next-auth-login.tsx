@@ -28,6 +28,8 @@ function NextAuthLoginContent() {
           redirect: false,
         });
 
+        console.log(result, 'result');
+
         if (result?.error) {
           setFormError(result.error);
           return;
@@ -161,6 +163,7 @@ function NextAuthLoginContent() {
         <p className="text-xs text-slate-500">
           После входа здесь появятся данные пользователя и Clerk session, возвращенная сервером.
         </p>
+        <button onClick={() => {console.log(session)}}>Console session</button>
         <pre className="max-h-72 overflow-auto rounded-lg border border-slate-800 bg-slate-950 p-4 text-xs text-slate-300">
 {JSON.stringify(session, null, 2)}
         </pre>
